@@ -11,3 +11,4 @@ venv
 MANIFEST
 rustsrc.zip
 version.txt
+kssymbolic/_lowlevel*

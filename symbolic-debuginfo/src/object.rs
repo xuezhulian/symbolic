@@ -524,6 +524,16 @@ impl<'session> DebugSession<'session> for ObjectDebugSession<'_> {
     fn source_by_path(&self, path: &str) -> Result<Option<SourceFileDescriptor<'_>>, Self::Error> {
         self.source_by_path(path)
     }
+
+    fn symtab_functions<F>(&self, filter: F) -> Option<Vec<Function>>
+    where
+        F: FnMut(&Symbol) -> bool,
+    {
+        match *self {
+            ObjectDebugSession::Dwarf(ref s) => s.symtab_functions(filter),
+            _ => None,
+        }
+    }
 }
 
 /// An iterator over functions in an [`Object`](enum.Object.html).

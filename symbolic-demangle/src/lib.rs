@@ -33,6 +33,7 @@
 
 #![warn(missing_docs)]
 
+use regex::Regex;
 use std::borrow::Cow;
 #[cfg(feature = "swift")]
 use std::ffi::{CStr, CString};
@@ -414,6 +415,10 @@ pub trait Demangle {
     ///
     /// [`demangle`]: trait.Demangle.html#tymethod.demangle
     fn try_demangle(&self, opts: DemangleOptions) -> Cow<'_, str>;
+    /// 解析 kn 符号 _636f6d2e6b7761692e6b6d702e6d6f64756c653a7368656c6c4170702f707269766174652f7661722f666f6c646572732f6b392f36713533765f6b6a3577355f68387077747873726236326330303030676e2f542f746d707461316b7831776e2f6b732d6170706c69636174696f6e732f7368656c6c4170702f6275696c642f67656e6572617465642f6b73702f6f686f7341726d36342f6f686f7341726d36344d61696e2f6b6f746c696e2f636f6d2f6b7761692f696d636f72652f4b4e61706947656e6572617465645f4b745f494d436c69656e74417070496e666f2e6b74_kncfun3
+    fn kotlin_try_demangle(&self) -> Option<(String, String)> {
+        None
+    }
 }
 
 impl Demangle for Name<'_> {
@@ -460,6 +465,35 @@ impl Demangle for Name<'_> {
     }
 
     fn try_demangle(&self, opts: DemangleOptions) -> Cow<'_, str> {
+        let re = Regex::new(r"^_([0-9a-f]+)_kncfun([0-9]+)$").unwrap();
+
+        if let Some(caps) = re.captures(self.as_str()) {
+            let filepath = &caps[1];
+            let fun_id = &caps[2];
+
+            if filepath.len() % 2 == 0 {
+                let mut bytes = Vec::with_capacity(filepath.len() / 2);
+                let mut ok = true;
+
+                for chunk in filepath.as_bytes().chunks(2) {
+                    if let Ok(s) = std::str::from_utf8(chunk) {
+                        if let Ok(b) = u8::from_str_radix(s, 16) {
+                            bytes.push(b);
+                            continue;
+                        }
+                    }
+                    ok = false;
+                    break;
+                }
+
+                if ok {
+                    if let Ok(decoded) = String::from_utf8(bytes) {
+                        return Cow::Owned(format!("kncfun{} ({})", fun_id, decoded));
+                    }
+                }
+            }
+        }
+
         if matches!(self.mangling(), NameMangling::Unmangled) {
             return Cow::Borrowed(self.as_str());
         }
@@ -467,6 +501,39 @@ impl Demangle for Name<'_> {
             Some(demangled) => Cow::Owned(demangled),
             None => Cow::Borrowed(self.as_str()),
         }
+    }
+
+    fn kotlin_try_demangle(&self) -> Option<(String, String)> {
+        let re = Regex::new(r"^_([0-9a-f]+)_kncfun([0-9]+)$").unwrap();
+
+        if let Some(caps) = re.captures(self.as_str()) {
+            let filepath = &caps[1];
+            let fun_id = &caps[2];
+
+            if filepath.len() % 2 == 0 {
+                let mut bytes = Vec::with_capacity(filepath.len() / 2);
+                let mut ok = true;
+
+                for chunk in filepath.as_bytes().chunks(2) {
+                    if let Ok(s) = std::str::from_utf8(chunk) {
+                        if let Ok(b) = u8::from_str_radix(s, 16) {
+                            bytes.push(b);
+                            continue;
+                        }
+                    }
+                    ok = false;
+                    break;
+                }
+
+                if ok {
+                    if let Ok(decoded) = String::from_utf8(bytes) {
+                        return Some((decoded, format!("kncfun{}", fun_id)));
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
 

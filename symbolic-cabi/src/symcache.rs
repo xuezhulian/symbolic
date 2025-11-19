@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::ffi::CStr;
 use std::io::Cursor;
 use std::mem;
@@ -5,6 +6,7 @@ use std::os::raw::c_char;
 use std::slice;
 
 use symbolic::common::{ByteView, InstructionInfo, SelfCell};
+use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::symcache::{SymCache, SymCacheConverter, SYMCACHE_VERSION};
 
 use crate::core::SymbolicStr;
@@ -51,11 +53,18 @@ pub struct SymbolicInstructionInfo {
     pub ip_reg: u64,
 }
 
+#[repr(C)]
+pub struct SymbolicJsonFunctionsResult {
+    pub items: *mut SymbolicStr,
+    pub len: usize,
+}
+
 ffi_fn! {
     /// Creates a symcache from a given path.
     unsafe fn symbolic_symcache_open(path: *const c_char) -> Result<*mut SymbolicSymCache> {
         let byteview = ByteView::open(CStr::from_ptr(path).to_str()?)?;
-        let cell = SelfCell::try_new(byteview, |p| SymCache::parse(&*p))?;
+        let s = CStr::from_ptr(path).to_str()?;
+        let cell = SelfCell::try_new(byteview, |p| SymCache::parse_with_path(&*p, s))?;
         Ok(SymbolicSymCache::from_rust(cell))
     }
 }
@@ -76,12 +85,15 @@ ffi_fn! {
     /// Creates a symcache from a given object.
     unsafe fn symbolic_symcache_from_object(
         object: *const SymbolicObject,
+        path: *const c_char,
     ) -> Result<*mut SymbolicSymCache> {
         let object = SymbolicObject::as_rust(object).get();
+        let s = CStr::from_ptr(path).to_str()?;
 
         let mut buffer = Vec::new();
         let mut converter = SymCacheConverter::new();
-        converter.process_object(object)?;
+
+        converter.process_object_with_path(object, s)?;
         converter.serialize(&mut Cursor::new(&mut buffer))?;
 
         let byteview = ByteView::from_vec(buffer);
@@ -146,14 +158,17 @@ ffi_fn! {
         let mut items = vec![];
         for source_location in cache.lookup(addr) {
             let full_path = source_location.file().map(|file| file.full_path()).unwrap_or_default();
+            let symbol = source_location.function().name_for_demangling();
+            let symbol = symbol.try_demangle(DemangleOptions::name_only()).to_owned();
             items.push(SymbolicSourceLocation {
                 sym_addr: source_location.function().entry_pc() as u64,
                 instr_addr: addr,
                 line: source_location.line(),
                 lang: SymbolicStr::new(source_location.function().language().name()),
-                symbol: SymbolicStr::new(source_location.function().name()),
+                symbol: SymbolicStr::new(symbol.borrow()),
                 full_path: SymbolicStr::from_string(full_path),
             });
+            mem::forget(symbol);
         }
 
         items.shrink_to_fit();
@@ -196,5 +211,36 @@ ffi_fn! {
     /// Returns the latest symcache version.
     unsafe fn symbolic_symcache_latest_version() -> Result<u32> {
         Ok(SYMCACHE_VERSION)
+    }
+}
+
+ffi_fn! {
+    /// Returns functions with json format.
+    unsafe fn symbolic_symcache_get_functions(symcache: *const SymbolicSymCache, functions_sum: usize, full_path: bool, name_only: bool,) -> Result<SymbolicJsonFunctionsResult> {
+        let symcache = SymbolicSymCache::as_rust(symcache).get();
+        symcache.get_functions(functions_sum, full_path, name_only);
+        let mut results:Vec<SymbolicStr> = symcache.json_functions
+        .borrow()
+        .iter()
+        .map(|function| {
+            SymbolicStr::new(&function)
+        }).collect();
+        results.shrink_to_fit();
+        let result = SymbolicJsonFunctionsResult {
+            items: results.as_mut_ptr(),
+            len: results.len()
+        };
+        mem::forget(results);
+        Ok(result)
+    }
+}
+
+ffi_fn! {
+    /// Free functions.
+    unsafe fn symbolic_symcache_free_functions(result: *mut SymbolicJsonFunctionsResult) {
+        if !result.is_null() {
+            let result = &*result;
+            Vec::from_raw_parts(result.items, result.len, result.len);
+        }
     }
 }

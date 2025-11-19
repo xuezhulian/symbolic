@@ -2,3 +2,5 @@
 .gitignore export-ignore
 py/* export-ignore
 version.sh export-ignore
+py/lib/libsymbolic_cabi.so filter=lfs diff=lfs merge=lfs -text
+py/dist/ks_symbolic-12.1.4-py3-none-any.whl filter=lfs diff=lfs merge=lfs -text

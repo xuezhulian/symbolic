@@ -27,5 +27,6 @@ symbolic = { version = "12.17.0", path = "../symbolic", features = [
     "debuginfo",
     "sourcemapcache",
     "symcache",
+    "demangle",
 ] }
 tempfile = { workspace = true }

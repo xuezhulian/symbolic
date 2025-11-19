@@ -263,11 +263,6 @@ impl<'d> MachObject<'d> {
         let mut section_index = 0;
 
         'outer: for segment in &self.macho.segments {
-            if segment.name().ok() != Some("__TEXT") {
-                section_index += segment.nsects as usize;
-                continue;
-            }
-
             for result in segment {
                 // Do not continue to iterate potentially broken section headers. This could lead to
                 // invalid section indices.
@@ -542,7 +537,6 @@ impl<'data> Iterator for MachOSymbolIterator<'data> {
                     name = tail;
                 }
             }
-
             return Some(Symbol {
                 name: Some(Cow::Borrowed(name)),
                 address: nlist.n_value - self.vmaddr,

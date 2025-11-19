@@ -6,7 +6,7 @@ on:
       - "release/**"
 
 env:
-  MANYLINUX_VERSION: manylinux_2_28
+  MANYLINUX_VERSION: manylinux2014
   # Pinned to 2025.08.15-1 since manylinux 2025.08.22 onward removes setuptools
   MANYLINUX_PIN: 2025.08.15-1
 
@@ -85,7 +85,7 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: 3.8
+          python-version: 3.6
 
       - run: make sdist
 

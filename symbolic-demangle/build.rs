@@ -1,3 +1,5 @@
+use std::env::consts::OS;
+
 fn main() {
     #[cfg(feature = "swift")]
     {
@@ -24,6 +26,7 @@ fn main() {
             .flag("-DSWIFT_STDLIB_HAS_TYPE_PRINTING=1")
             .warnings(false)
             .include("vendor/swift/include")
+            .compiler("/usr/bin/g++")
             .compile("swiftdemangle");
     }
 }

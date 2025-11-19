@@ -33,7 +33,10 @@ swift = ["cc"]
 cpp_demangle = { workspace = true, optional = true }
 msvc-demangler = { workspace = true, optional = true }
 rustc-demangle = { workspace = true, optional = true }
+
 symbolic-common = { version = "12.17.0", path = "../symbolic-common" }
+regex = "1.11.0"
+
 
 [build-dependencies]
 cc = { workspace = true, optional = true }
