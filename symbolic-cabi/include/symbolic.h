@@ -295,6 +295,13 @@ typedef struct SymbolicInstructionInfo {
    */
   uint64_t ip_reg;
 } SymbolicInstructionInfo;
+/**
+ * Represents result of functions.
+ */
+typedef struct SymbolicJsonFunctionsResult {
+    struct SymbolicStr *items;
+    uintptr_t len;
+} SymbolicJsonFunctionsResult;
 
 /**
  * Extracts call frame information (CFI) from an Object.
@@ -690,7 +697,8 @@ struct SymbolicSymCache *symbolic_symcache_from_bytes(const uint8_t *bytes,
 /**
  * Creates a symcache from a given object.
  */
-struct SymbolicSymCache *symbolic_symcache_from_object(const struct SymbolicObject *object);
+struct SymbolicSymCache *symbolic_symcache_from_object(
+    const struct SymbolicObject *object, const char *path);
 
 /**
  * Frees a symcache object.
@@ -744,5 +752,19 @@ uint64_t symbolic_find_best_instruction(const struct SymbolicInstructionInfo *ii
  * Returns the latest symcache version.
  */
 uint32_t symbolic_symcache_latest_version(void);
+
+/**
+ * Get functions with json format.
+ */
+struct SymbolicJsonFunctionsResult symbolic_symcache_get_functions(
+    const struct SymbolicSymCache *symcache,
+    uint64_t functions_sum,
+    bool full_path,
+    bool name_only);
+
+/**
+ * Free functions.
+ */
+void symbolic_symcache_free_functions(const struct SymbolicJsonFunctionsResult *rv);
 
 #endif /* SYMBOLIC_H_INCLUDED */

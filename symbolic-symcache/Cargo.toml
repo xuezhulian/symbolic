@@ -26,9 +26,13 @@ indexmap = { workspace = true }
 symbolic-common = { version = "12.17.0", path = "../symbolic-common" }
 symbolic-debuginfo = { version = "12.17.0", path = "../symbolic-debuginfo" }
 symbolic-il2cpp = { version = "12.17.0", path = "../symbolic-il2cpp", optional = true }
+symbolic-demangle = { version = "12.17.0", path = "../symbolic-demangle" }
+
 thiserror = { workspace = true }
 tracing = { workspace = true }
 watto = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

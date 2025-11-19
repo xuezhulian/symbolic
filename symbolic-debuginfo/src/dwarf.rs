@@ -250,6 +250,7 @@ impl<'d> DwarfLineProgram<'d> {
         let mut sequences = Vec::new();
         let mut sequence_rows = Vec::<DwarfRow>::new();
         let mut prev_address = 0;
+        // let mut prev_line = 0;
         let mut state_machine = program.rows();
 
         while let Ok(Some((_, &program_row))) = state_machine.next_row() {
@@ -295,6 +296,20 @@ impl<'d> DwarfLineProgram<'d> {
                 // If we wanted to handle this, we could start a new sequence
                 // here, but let's wait until that is needed.
             } else {
+                // 处理 is_stmt 为 0 且 行号为 0 的 case，将当前行号设置为上一个 is_stmt 非 0 的行号
+                // let mut new_line = line.unwrap_or_default();
+                // 先处理 is_stmt 再处理 duplicate 否则会把 is_stmt 为 false 的值赋值给 ture 的值
+                if !program_row.is_stmt() {
+                    //     if let Some(line) = line {
+                    //         if line == 0 {
+                    //             new_line = prev_line;
+                    //         }
+                    //     }
+                    // } else {
+                    //     prev_line = new_line;
+                    continue;
+                }
+
                 let file_index = program_row.file_index();
                 let line = program_row.line().map(|v| v.get());
                 let mut duplicate = false;
@@ -305,10 +320,12 @@ impl<'d> DwarfLineProgram<'d> {
                         duplicate = true;
                     }
                 }
+
                 if !duplicate {
                     sequence_rows.push(DwarfRow {
                         address,
                         file_index,
+                        // line: Some(new_line),
                         line,
                         size: None,
                     });
@@ -338,6 +355,19 @@ impl<'d> DwarfLineProgram<'d> {
         }
     }
 
+    /// Imprecise comparison
+    /// [seq [range]]
+    pub fn contains(&self, range: &Range) -> bool {
+        for seq in &self.sequences {
+            if let Some(last_row) = seq.rows.last() {
+                if last_row.address >= range.begin && seq.start <= range.begin {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     pub fn get_rows(&self, range: &Range) -> &[DwarfRow] {
         for seq in &self.sequences {
             if seq.end <= range.begin || seq.start > range.end {
@@ -347,7 +377,15 @@ impl<'d> DwarfLineProgram<'d> {
             let from = match seq.rows.binary_search_by_key(&range.begin, |x| x.address) {
                 Ok(idx) => idx,
                 Err(0) => continue,
-                Err(next_idx) => next_idx - 1,
+                // Err(next_idx) => next_idx - 1, 之前的逻辑。二分查找如果没有找到, 他认为 last row 的 addr
+                // 会大于当前查找的 addr，当前 row 的 addr 小于查找的 addr，返回当前的 row，没有考虑二分查找遍历
+                // 到最后一个位置。
+                Err(next_idx) => {
+                    if next_idx == seq.rows.len() {
+                        continue;
+                    }
+                    next_idx - 1
+                }
             };
 
             let len = seq.rows[from..]
@@ -1377,6 +1415,96 @@ impl<'session> DebugSession<'session> for DwarfDebugSession<'_> {
 
     fn source_by_path(&self, path: &str) -> Result<Option<SourceFileDescriptor<'_>>, Self::Error> {
         self.source_by_path(path)
+    }
+
+    fn symtab_functions<F>(&self, mut filter: F) -> Option<Vec<Function>>
+    where
+        F: FnMut(&Symbol) -> bool,
+    {
+        let mut swift_unit_indexs: Vec<usize> = vec![];
+        let mut index = 0;
+        while index < self.cell.get().headers.len() {
+            let unit = self.cell.get().get_unit(index);
+            if let Ok(Some(unit)) = unit {
+                if let Some(name) = unit.name {
+                    if let Ok(name) = name.to_string() {
+                        if name.to_string().contains(".swift") {
+                            swift_unit_indexs.push(index);
+                        }
+                    }
+                }
+            }
+            index += 1;
+        }
+        let mut current_unit: Result<
+            Option<&gimli::Unit<gimli::EndianSlice<Endian>, usize>>,
+            DwarfError,
+        > = self.cell.get().get_unit(0);
+        let mut functions: Vec<Function> = vec![];
+        for symbol in &self.cell.get().symbol_map {
+            // symbol.address 存的是 offset
+            let address = symbol.address + self.cell.get().address_offset as u64;
+
+            if filter(&symbol) {
+                continue;
+            }
+            let mut unit_index = 0;
+            loop {
+                if let Ok(Some(unit)) = current_unit {
+                    if let Ok(Some(dwarf_unit)) = DwarfUnit::from_unit(unit, self.cell.get(), None)
+                    {
+                        if let Some(line_program) = dwarf_unit.line_program.as_ref() {
+                            let range = Range {
+                                begin: address,
+                                end: address + symbol.size,
+                            };
+                            // line_program seq 存的是 pc
+                            if line_program.contains(&range) {
+                                let rows = line_program.get_rows(&range);
+                                if rows.len() > 0 {
+                                    let mut builder: FunctionBuilder = FunctionBuilder::new(
+                                        Name::new(
+                                            symbol.name().unwrap().to_string(),
+                                            NameMangling::Unknown,
+                                            Language::Unknown,
+                                        ),
+                                        b"",
+                                        symbol.address,
+                                        symbol.size,
+                                    );
+                                    for row in rows {
+                                        let address =
+                                            offset(row.address, self.cell.get().address_offset);
+                                        let size = row.size;
+
+                                        let file = dwarf_unit
+                                            .resolve_file(row.file_index)
+                                            .unwrap_or_default();
+                                        let line = row.line.unwrap_or(0);
+                                        builder.add_leaf_line(address, size, file, line);
+                                    }
+                                    let f: Function = builder.finish();
+                                    if f.lines.len() > 0 {
+                                        functions.push(f);
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                unit_index += 1;
+                if unit_index >= swift_unit_indexs.len() {
+                    break;
+                }
+                current_unit = self
+                    .cell
+                    .get()
+                    .get_unit(*swift_unit_indexs.get(unit_index).unwrap());
+            }
+        }
+        Some(functions)
     }
 }
 

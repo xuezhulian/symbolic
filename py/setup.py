@@ -87,7 +87,7 @@ def build_native(spec):
     if sys.platform == "darwin":
         rtld_flags.append("NODELETE")
     spec.add_cffi_module(
-        module_path="symbolic._lowlevel",
+        module_path="kssymbolic._lowlevel",
         dylib=find_dylib,
         header_filename=lambda: build.find_header(
             "symbolic.h", in_path="symbolic-cabi/include"
@@ -97,7 +97,7 @@ def build_native(spec):
 
 
 setup(
-    name="symbolic",
+    name="ks-symbolic",
     version=version,
     packages=find_packages(),
     author="Sentry",
@@ -117,7 +117,7 @@ setup(
     # milksnake specifies cffi>=1.6.0 as dependency while cffi does not specify a
     # minimum version for pycparser
     setup_requires=["milksnake>=0.1.2", "cffi>=1.6.0", "pycparser"],
-    python_requires=">=3.8",
+    python_requires=">=3.6",
     milksnake_tasks=[build_native],
     cmdclass={"sdist": CustomSDist},
 )

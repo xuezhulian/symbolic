@@ -84,7 +84,7 @@ fn execute(matches: &ArgMatches) -> Result<()> {
             converter.add_transformer(linemapping);
         }
 
-        converter.process_object(obj)?;
+        converter.process_object_with_path(obj, file_path)?;
 
         let mut result = Vec::new();
         converter.serialize(&mut Cursor::new(&mut result))?;
@@ -97,8 +97,13 @@ fn execute(matches: &ArgMatches) -> Result<()> {
                 .get_one::<PathBuf>("symcache_file_path")
                 .cloned()
                 .unwrap_or_else(|| {
-                    let mut symcache_path = file_path.clone().into_os_string();
-                    symcache_path.push(".symcache");
+                    // kuaishou changed start
+                    // 自动生成的路径里，追加arch和build id(code id)
+                    let symcache_path = format!("{}-{}-{}.symcache",
+                        file_path.to_string_lossy(),
+                        obj.arch().name(),
+                        obj.code_id().unwrap_or_else(|| obj.debug_id().to_string().parse().unwrap()));
+                    // kuaishou changed end
                     PathBuf::from(symcache_path)
                 });
             File::create(&filename)?.write_all(&buffer)?;
