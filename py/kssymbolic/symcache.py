@@ -1,26 +1,12 @@
-import io
 import shutil
-from symbolic._lowlevel import lib, ffi
-from symbolic.utils import (
+from kssymbolic._lowlevel import lib, ffi
+from kssymbolic.utils import (
     RustObject,
     rustcall,
     decode_str,
-    encode_str,
     encode_path,
-    attached_refs,
-    SliceReader,
 )
-from symbolic.common import parse_addr
-from symbolic import exceptions
-
-
-__all__ = [
-    "SourceLocation",
-    "SymCache",
-    "find_best_instruction",
-    "SYMCACHE_LATEST_VERSION",
-]
-
+from kssymbolic.common import parse_addr
 
 # the most recent version for the symcache file format.
 SYMCACHE_LATEST_VERSION = rustcall(lib.symbolic_symcache_latest_version)
@@ -57,20 +43,13 @@ class SymCache(RustObject):
         return cls._from_objptr(rustcall(lib.symbolic_symcache_open, encode_path(path)))
 
     @classmethod
-    def from_object(cls, obj):
+    def from_object(cls, obj, path):
         """Creates a symcache from the given object."""
         return cls._from_objptr(
-            rustcall(lib.symbolic_symcache_from_object, obj._get_objptr())
+            rustcall(
+                lib.symbolic_symcache_from_object, obj._get_objptr(), encode_path(path)
+            )
         )
-
-    @classmethod
-    def from_bytes(cls, data):
-        """Loads a symcache from a binary buffer."""
-        symcache = cls._from_objptr(
-            rustcall(lib.symbolic_symcache_from_bytes, data, len(data))
-        )
-        attached_refs[symcache] = data
-        return symcache
 
     @property
     def arch(self):
@@ -94,12 +73,6 @@ class SymCache(RustObject):
     def is_latest_version(self):
         """Returns true if this is the latest file format."""
         return self.version >= SYMCACHE_LATEST_VERSION
-
-    def open_stream(self):
-        """Returns a stream to read files from the internal buffer."""
-        buf = self._methodcall(lib.symbolic_symcache_get_bytes)
-        size = self._methodcall(lib.symbolic_symcache_get_size)
-        return io.BufferedReader(SliceReader(ffi.buffer(buf, size), self))
 
     def dump_into(self, f):
         """Dumps the symcache into a file object."""
@@ -130,23 +103,17 @@ class SymCache(RustObject):
             rustcall(lib.symbolic_lookup_result_free, ffi.addressof(rv))
         return matches
 
-
-def find_best_instruction(addr, arch, crashing_frame=False, signal=None, ip_reg=None):
-    """Given an instruction and meta data attempts to find the best one
-    by using a heuristic we inherited from symsynd.
-    """
-    # Ensure we keep this local alive until this function returns as we
-    # would otherwise operate on garbage
-    encoded_arch = encode_str(arch)
-
-    addr = parse_addr(addr)
-    ii = ffi.new("SymbolicInstructionInfo *")
-    ii[0].addr = addr
-    ii[0].arch = encoded_arch
-    ii[0].crashing_frame = crashing_frame
-    ii[0].signal = signal or 0
-    ii[0].ip_reg = parse_addr(ip_reg)
-    try:
-        return int(rustcall(lib.symbolic_find_best_instruction, ii))
-    except exceptions.UnknownArchError:
-        return int(addr)
+    def get_functions(self, functions_sum, full_path=False, name_only=True):
+        """Get functions with json format."""
+        rv = self._methodcall(lib.symbolic_symcache_get_functions, functions_sum, full_path, name_only)
+        try:
+            matches = []
+            for idx in range(rv.len):
+                function_str = decode_str(rv.items[idx], free=True)
+                matches.append(function_str)
+        except Exception as error:
+            print("get_functions exception: %s" % error)
+            raise(error)
+        finally:
+            rustcall(lib.symbolic_symcache_free_functions, ffi.addressof(rv))
+        return matches

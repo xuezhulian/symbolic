@@ -3,6 +3,7 @@
 use std::collections::btree_map;
 use std::collections::BTreeMap;
 use std::io::Write;
+use std::path::Path;
 
 use indexmap::IndexSet;
 use symbolic_common::{Arch, DebugId};
@@ -95,7 +96,49 @@ impl<'a> SymCacheConverter<'a> {
             .map_err(|e| Error::new(ErrorKind::BadDebugFile, e))?;
 
         self.set_arch(object.arch());
+        // Android .so 使用 code id 作为 uuid
         self.set_debug_id(object.debug_id());
+        if let Some(code_id) = object.code_id() {
+            if !object.debug_id().to_string().eq(code_id.as_str()) {
+                let code_id = code_id.as_ref();
+                let code_id_len = code_id.as_bytes().len();
+                if code_id_len >= 32 {
+                    let uuid = code_id
+                        .get(code_id_len - 32..)
+                        .expect(&format!(
+                            "code_id 获取后 32 位失败，此时的 code_id 值是: {:?}",
+                            object.code_id()
+                        ))
+                        .parse()
+                        .ok()
+                        .expect(&format!(
+                            "code_id parse 失败，此时的 code_id 值是: {:?}",
+                            object.code_id()
+                        ));
+                    self.set_debug_id(DebugId::from_parts(uuid, 0));
+                } else {
+                    let mut uuid = String::from_utf8(vec![b'0'; 32 - code_id_len])
+                        .expect(&format!("code_id 小于 32 位，生成前序 [0; x] 失败"));
+                    uuid.push_str(code_id);
+                    self.set_debug_id(DebugId::from_parts(
+                        uuid.parse().ok().expect(&format!(
+                            "code_id 小于 32 位，parse 失败，此时的 uuid 值是: {:?}",
+                            uuid
+                        )),
+                        0,
+                    ));
+                }
+            }
+        }
+
+        // kuaishou changed start
+        println!("debug id: {}", object.debug_id().to_string());
+        if object.code_id() == None {
+            println!("build id: unknown");
+        } else {
+            println!("build id: {}", object.code_id().unwrap().as_str());
+        }
+        // kuaishou changed end
 
         self.is_windows_object = matches!(object.file_format(), FileFormat::Pe | FileFormat::Pdb);
 
@@ -112,6 +155,31 @@ impl<'a> SymCacheConverter<'a> {
         self.is_windows_object = false;
 
         Ok(())
+    }
+
+    // Methods processing symbolic-debuginfo [`ObjectLike`] below:
+    // Feel free to move these to a separate file.
+
+    /// This processes the given [`ObjectLike`] object, collecting all its functions and line
+    /// information into the converter.
+    #[tracing::instrument(skip_all, fields(object.debug_id = %object.debug_id().breakpad()))]
+    pub fn process_object_with_path<'d, 'o, O, P: AsRef<Path>>(
+        &mut self,
+        object: &'o O,
+        path: P,
+    ) -> Result<(), Error>
+    where
+        O: ObjectLike<'d, 'o>,
+        O::Error: std::error::Error + Send + Sync + 'static,
+    {
+        if let Some(filename) = path.as_ref().file_name() {
+            let filename = filename.to_string_lossy().into_owned();
+            println!("filename: {}", filename);
+
+            let string_table = &mut self.string_table;
+            string_table.insert(&format!("imagename: {}", filename));
+        }
+        self.process_object(object)
     }
 
     /// Processes an individual [`Function`], adding its line information to the converter.

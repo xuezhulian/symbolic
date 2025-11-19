@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, path::Path};
 
 use symbolic_common::{Language, Name, NameMangling};
 
@@ -102,6 +102,16 @@ impl File<'_> {
         let full_path = symbolic_common::clean_path(&full_path).into_owned();
 
         full_path
+    }
+
+    /// Returns this file's name.
+    pub fn name(&self) -> String {
+        if let Some(filename) = Path::new(self.name).file_name() {
+            if let Ok(filename) = filename.to_os_string().into_string() {
+                return filename;
+            }
+        }
+        self.name.to_string()
     }
 }
 
