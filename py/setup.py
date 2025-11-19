@@ -46,15 +46,7 @@ class CustomSDist(sdist):
 
 
 def build_native(spec):
-    cmd = [
-        "cargo",
-        "build",
-        "-p",
-        "symbolic-cabi",
-    ]
-    cargo_target = os.environ.get("CARGO_BUILD_TARGET")
-    if cargo_target:
-        cmd = cmd + ["--target", cargo_target]
+    cmd = ["cargo", "build", "-p", "symbolic-cabi"]
     if not DEBUG_BUILD:
         cmd.append("--release")
         target = "release"
@@ -84,20 +76,18 @@ def build_native(spec):
     build = spec.add_external_build(cmd=cmd, path=rust_path)
 
     def find_dylib():
+        cargo_target = os.environ.get("CARGO_BUILD_TARGET")
         if cargo_target:
             in_path = f"target/{cargo_target}/{target}"
         else:
             in_path = "target/%s" % target
-        platform = None
-        if cargo_target != None and "linux" in cargo_target.lower():
-            platform = "linux"
-        return build.find_dylib("symbolic_cabi", in_path=in_path, platform=platform)
+        return build.find_dylib("symbolic_cabi", in_path=in_path)
 
     rtld_flags = ["NOW"]
     if sys.platform == "darwin":
         rtld_flags.append("NODELETE")
     spec.add_cffi_module(
-        module_path="kssymbolic._lowlevel",
+        module_path="symbolic._lowlevel",
         dylib=find_dylib,
         header_filename=lambda: build.find_header(
             "symbolic.h", in_path="symbolic-cabi/include"
@@ -105,39 +95,11 @@ def build_native(spec):
         rtld_flags=rtld_flags,
     )
 
-def fake_build_native(spec):
-    def find_dylib():
-        return "%s/lib/libsymbolic_cabi.so" % pwd
-    def find_header():
-        return "%s/../symbolic-cabi/include/symbolic.h" % pwd
-    rtld_flags = ["NOW"]
-    if sys.platform == "darwin":
-        rtld_flags.append("NODELETE")
-    spec.add_cffi_module(
-        module_path="kssymbolic._lowlevel",
-        dylib=find_dylib,
-        header_filename=find_header,
-        rtld_flags=rtld_flags,
-    )
-
-global pwd
-pwd = os.environ.get("PWD")
-if pwd == None:
-    print("没有获取到当前路径")
-    exit(1)
-
-SHOULD_COMPILE = os.environ.get("SHOULD_COMPILE")
-if SHOULD_COMPILE == None:
-    milksnake_tasks = [fake_build_native]
-    packages = ["kssymbolic"]
-else:
-    milksnake_tasks = [build_native]
-    packages = find_packages()
 
 setup(
     name="ks-symbolic",
-    version="12.1.22",
-    packages=packages,
+    version=version,
+    packages=find_packages(),
     author="Sentry",
     license="MIT",
     author_email="hello@sentry.io",
@@ -159,4 +121,3 @@ setup(
     milksnake_tasks=[build_native],
     cmdclass={"sdist": CustomSDist},
 )
-
