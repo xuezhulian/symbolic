@@ -1,5 +1,11 @@
 # Changelog
 
+## 12.17.19
+
+### Various fixes & improvements
+
+- 兼容 kn (4d3df015)
+
 ## 12.17.0
 
 - feat(pdb): Extract the srcsrv integration name for metrics ([#944](https://github.com/getsentry/symbolic/pull/944))
