@@ -1,6 +1,6 @@
 [package]
 name = "symbolic-demangle"
-version = "12.17.0"
+version = "12.17.16"
 license = "MIT"
 authors = [
     "Armin Ronacher <armin.ronacher@active-4.com>",
@@ -34,7 +34,7 @@ cpp_demangle = { workspace = true, optional = true }
 msvc-demangler = { workspace = true, optional = true }
 rustc-demangle = { workspace = true, optional = true }
 
-symbolic-common = { version = "12.17.0", path = "../symbolic-common" }
+symbolic-common = { version = "12.17.16", path = "../symbolic-common" }
 regex = "1.11.0"
 
 
